@@ -78,7 +78,7 @@ class db {
                   $clause = $table .".`$col` IN (";
                   $array = array();
                   foreach($val as &$v) {
-                     $array[] = "?";
+                     $array[] = strval($v);
                      if (is_numeric($v)) {
                         $types .= "i";
                      } else {
@@ -161,7 +161,7 @@ class db {
       $params[] = &$perPage;
       $params[0] = &$types;
       if ($stmt = self::$mysqli->prepare($sql)) {
-         call_user_func_array(array($stmt, "bind_param"), &$params);
+         call_user_func_array(array($stmt, "bind_param"), $params);
          return self::query($stmt);
       } else {
          throw new Exception(self::$mysqli->error);
@@ -334,14 +334,14 @@ class db {
       } else {
          $sql .= " ORDER BY lastTime DESC";
       }
-      $sql .= " LIMIT ?, ?";
       $start = $page * $perPage;
+      $sql .= " LIMIT ".strval($start).", ".strval($perPage);
       $params[] = &$start;
       $params[] = &$perPage;
       $types .= "ii";
       $params[0] = &$types;
       if ($stmt = self::$mysqli->prepare($sql)) {
-         call_user_func_array(array($stmt, "bind_param"), &$params);
+         call_user_func_array(array($stmt, "bind_param"), $params);
          return self::query($stmt);
       } else {
          throw new Exception(self::$mysqli->error);
