@@ -17,7 +17,7 @@ class SessionData
 	public var packageName:String;				//the name of your package
 	public var version:String;					//the version of your program ("version" in project.xml meta tag)
 	public var startTime:Date;					//when this session started
-	public var files:Map<String,String>;		// backup of all necessary data files as they were at the session start, indexed by filename
+	public var files:Map<String,Dynamic>;		// backup of all necessary data files as they were at the session start, indexed by filename
 												// ->for games, this could be the user's save + config data
 												// ->for apps, this could be the user's preferences or other config data
 												
@@ -31,7 +31,7 @@ class SessionData
 		fileName = data.fileName;
 		packageName = data.packageName;
 		version = data.version;
-		files = new Map<String,String>();
+		files = new Map<String,Dynamic>();
 		startTime = Date.now();
 	}
 	

@@ -1,4 +1,5 @@
 package crashdumper;
+#if !macro
 import crashdumper.hooks.Util;
 import crashdumper.hooks.IHookPlatform;
 import haxe.CallStack;
@@ -22,7 +23,7 @@ import openfl.events.Event;
 	import sys.io.File;
 	import sys.io.FileOutput;
 #end
-
+#end
 /**
  * Listens for uncaught error events and then generates a comprehensive crash report.
  * Works best on native (windows/mac/linux) targets.
@@ -51,7 +52,7 @@ import openfl.events.Event;
 class CrashDumper
 {
 	public static var active:Bool=true;	//whether we're actively crashdumping or not
-	
+	#if !macro
 	public var closeOnCrash:Bool;
 	public var postCrashMethod:CrashDumper->Void;
 	public var customDataMethod:CrashDumper->Void;
@@ -91,14 +92,11 @@ class CrashDumper
 		path = path_;
 		
 		var data = { fileName:hook.fileName, packageName:hook.packageName, version:hook.version };
-		#if flash
-			data.fileName = stage_.loaderInfo.url;
-		#end
 		
 		session = new SessionData(sessionId_, data);
 		
-		system = new SystemData();
-		
+    system = new SystemData();
+    
 		endl = SystemData.endl();
 		sl = SystemData.slash();
 		
@@ -129,6 +127,7 @@ class CrashDumper
 	private var CACHED_STACK_TRACE:String = "";
 	
 	private static var request:haxe.Http;
+  private static var httpError:Bool = false;
 	
 	private static function onData(msg:String)
 	{
@@ -139,6 +138,7 @@ class CrashDumper
 	private static function onError(msg:String)
 	{
 		trace("onError(" + msg + ")");
+    httpError = true;
 		// trigger when HTTP error
 	}
 
@@ -215,6 +215,7 @@ class CrashDumper
 	
 	private function doErrorStuff(e:Dynamic, writeToFile:Bool = true, sendToServer:Bool = true, traceToLog:Bool = true):Void
 	{
+    trace("ERROR OCCURED: ", e);
 		theError = e;
 		
 		var pathLog:String = "log/";				//  path/to/log/
@@ -245,9 +246,43 @@ class CrashDumper
 		var path2LogErrors = Util.uPath([path, pathLogErrors]);
 		var path2LogErrorsDir = Util.uPath([path, pathLogErrors, logdir]);
 		
+		
+		if (sendToServer)
+		{
+			var entries:List<Entry> = new List();
+			
+			var entry = strToZipEntry(errorMessage, "_error");
+			if (entry != null)
+			{
+				entries.add(entry);	
+			}
+			
+			for (filename in session.files.keys())
+			{
+				var filecontent:Dynamic = session.files.get(filename);
+				if (filecontent != null && (!Std.is(filecontent, String) || filecontent != ""))
+				{
+					entry = strToZipEntry(filecontent, filename);
+					if(entry != null)
+					{
+						entries.add(entry);
+					}
+				}
+			}
+			
+			var bytesOutput = new BytesOutput();
+			var writer = new Writer(bytesOutput);
+			writer.write(entries);
+			var zipfileBytes:Bytes = bytesOutput.getBytes();
+			httpError = false;
+			Util.sendReport(request, zipfileBytes);
+      if (httpError) writeToFile = true;
+		}
+    
 		#if sys
 			if (writeToFile)
 			{
+        trace("Writing crash log to file");
 				if (!FileSystem.exists(path2Log))
 				{
 					FileSystem.createDirectory(path2Log);
@@ -285,8 +320,8 @@ class CrashDumper
 					//write out all our associated game session files
 					for (filename in session.files.keys())
 					{
-						var filecontent:String = session.files.get(filename);
-						if (filecontent != "" && filecontent != null)
+						var filecontent:Dynamic = session.files.get(filename);
+            if (filecontent != null && (!Std.is(filecontent, String) || filecontent != ""))
 						{
 							var fileOut = Util.uPath([pathLogErrors, logdir, filename]);
 							logFile(fileOut, filecontent);
@@ -295,37 +330,6 @@ class CrashDumper
 				}
 			}
 		#end
-		
-		if (sendToServer)
-		{
-			var entries:List<Entry> = new List();
-			
-			var entry = strToZipEntry(errorMessage, "_error");
-			if (entry != null)
-			{
-				entries.add(entry);	
-			}
-			
-			for (filename in session.files.keys())
-			{
-				var filecontent:String = session.files.get(filename);
-				if (filecontent != "" && filecontent != null)
-				{
-					entry = strToZipEntry(filecontent, filename);
-					if(entry != null)
-					{
-						entries.add(entry);
-					}
-				}
-			}
-			
-			var bytesOutput = new BytesOutput();
-			var writer = new Writer(bytesOutput);
-			writer.write(entries);
-			var zipfileBytes:Bytes = bytesOutput.getBytes();
-			
-			Util.sendReport(request, zipfileBytes);
-		}
 	}
 	
 	private function doErrorStuffByHTTP(e:Dynamic):Void
@@ -351,9 +355,12 @@ class CrashDumper
 		return str1 + str2;
 	}
 	
-	private function strToZipEntry(str, fileName):Entry
+	private function strToZipEntry(str:Dynamic, fileName):Entry
 	{
-		var bytes:Bytes = hook.getZipBytes(str);
+		var bytes:Bytes = null;
+    if (Std.is(str, String)) bytes = hook.getZipBytes(str);
+    else if (Std.is(str, Bytes)) bytes = str;
+    else throw "Unsupported ZIP Entry type!";
 		var entry:Entry = null;
 		
 		if (bytes != null)
@@ -394,11 +401,17 @@ class CrashDumper
 	}
 	
 	#if sys
-		private function logFile(filename:String, content:String):Void
+		private function logFile(filename:String, content:Dynamic):Void
 		{
 			filename = getSafeFilename(path, filename);
 			var f = File.write(filename);
-			f.writeString(content);
+      if (Std.is(content, String)) f.writeString(content);
+      else if (Std.is(content, Bytes)) f.write(content);
+      else
+      {
+        f.close();
+        throw "Unsupported file type!";
+      }
 			f.close();
 		}
 	#end
@@ -419,6 +432,7 @@ class CrashDumper
 	 */
 	
 	private function systemStr():String {
+		if (system == null) system = new SystemData();
 		return system.summary();
 	}
 	
@@ -492,7 +506,9 @@ class CrashDumper
 	{
 		var stackTrace:String = "";
 		var stack:Array<StackItem> = CallStack.exceptionStack();
+    #if flash
 		stack.reverse();
+    #end
 		var item:StackItem;
 		for (item in stack)
 		{
@@ -536,4 +552,5 @@ class CrashDumper
 		}
 		return str;
 	}
+  #end
 }

@@ -55,10 +55,19 @@ class SystemData
 		
 		try {
 			#if windows
-				runProcess("crashdumper/os.bat", [], processOS);
-				runProcess("crashdumper/memory.bat", [], processMemory);
-				runProcess("crashdumper/cpu.bat", [], processCPU);
-				runProcess("crashdumper/gpu.bat", [], processGPU);
+      // wmic cpu get name /Value <nul
+				//runProcess("wmic", ["OS", "get", "Caption"], processOS);
+				//runProcess("wmic", ["OS", "get", "Version"], processOS);
+				//runProcess("wmic", ["OS", "get", "TotalVisibleMemorySize"], processMemory);
+        //runProcess("wmic", ["cpu", "get", "name"], processCPU);
+				//runProcess("wmic", ["PATH", "Win32_VideoController", "get", "name"], processGPU);
+				//runProcess("wmic", ["PATH", "Win32_VideoController", "get", "driverversion"], processGPU);
+        
+				runProcess("systeminfo.bat", [], processWmicResponse);
+				//runProcess("crashdumper/memory.bat", [], processMemory);
+				//runProcess("crashdumper/cpu.bat", [], processCPU);
+				//runProcess("crashdumper/gpu.bat", [], processGPU);
+        //trace(osRaw, cpuName, totalMemory, gpuName, gpuDriverVersion);
 			#elseif linux
 				// must set file to executable first
 				runProcess("chmod", [ "a+x","crashdumper/os.sh"], dummy);
@@ -161,18 +170,37 @@ class SystemData
 			}
 			catch (msg:String)
 			{
+        //trace(msg);
 				p = null;
 			}
 			if (p != null)
 			{
-				p.exitCode();
+        //trace(commandStr, commandArgs);
+				//trace(p.exitCode());
 				var str:String = p.stdout.readAll().toString();
 				p.close();
+        //trace(str);
 				processFunc(str);
 			}
 		#end
 	}
 	
+  #if windows
+  private function processWmicResponse(data:String):Void
+  {
+    var lines:Array<String> = data.split("\n");
+    var processors:Array<String->Void> = [processCPU, processGPU, processGPU, processOS, processOS];
+    var i:Int = 0;
+    var j:Int = 0;
+    while (i < processors.length && j < lines.length)
+    {
+      var line:String = StringTools.trim(lines[j++]);
+      if (line.length == 0) continue;
+      processors[i++](line);
+    }
+  }
+  #end
+  
 	private function isOneOfThese(char:String,arr:Array<String>):Bool
 	{
 		for (str in arr) {
@@ -192,48 +220,16 @@ class SystemData
 		#if windows
 			//ver returns something like this: "Microsoft Windows [Version 6.1.7601]", localized
 			//we wanna strip away everything but the number
-			
-			line = stripEndLines(line);
-			osRaw = line;
+      if (line.indexOf("TotalVisibleMemorySize") != -1)
+      {
+        processMemory(line);
+        return;
+      }
+      line = processWmic(line, "Version");
+      if (line == null) line = "unknown";
+      
+      osRaw = "Microsoft Windows [Version " + line + "]"; // Replaced with wmic
 			line = line.toLowerCase();
-			line = stripWhiteSpace(line);
-			
-			//chomp away everything before the "[" and after the "]"
-			if (line.indexOf("[") != -1)
-			{
-				while (line.charAt(0) != "[")
-				{
-					line = line.substr(1, line.length - 1);
-				}
-			}
-			if (line.indexOf("]") != -1)
-			{
-				while (line.charAt(line.length - 1) != "]")
-				{
-					line = line.substr(0, line.length - 1);
-				}
-			}
-			
-			//now we have something like this: "[versionX.Y.Z]"
-			//where X.Y.Z are numbers and "version" is locale-specific
-			
-			//strip the "[]" chars
-			line = stripWord(line, "[");
-			line = stripWord(line, "]");
-			
-			var numAndDot:Array<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."];
-			
-			//strip away all non-number and non-dot characters
-			
-			if (line.length > 0 && !isOneOfThese(line.charAt(0), numAndDot))
-			{
-				while (line.length > 0 && !isOneOfThese(line.charAt(0), numAndDot))
-				{
-					line = line.substr(1, line.length - 1);
-				}
-			}
-			
-			//now we have a string we can safely compare against known values
 			osVersion = line;
 			
 			//check for windows 10
@@ -304,12 +300,8 @@ class SystemData
 	private function processMemory(line:String):Void
 	{
 		#if windows
-			line = stripWhiteSpace(line);
-			if (line.indexOf("TotalVisibleMemorySize=") != -1)
-			{
-				line = stripWord(line,"TotalVisibleMemorySize=");
-				totalMemory = Std.parseInt(line);
-			}
+      line = processWmic(line, "TotalVisibleMemorySize");
+      if (line != null) totalMemory = Std.parseInt(stripWhiteSpace(line));
 		#elseif linux
 			totalMemory = Std.parseInt(line);
 		#elseif mac
@@ -320,15 +312,8 @@ class SystemData
 	private function processCPU(line:String):Void
 	{
 		#if windows
-			line = stripEndLines(line);
-			if (line != null && line.indexOf("Name=") != -1)
-			{
-				cpuName = stripWord(line, "Name=");
-			}
-			else
-			{
-				cpuName = "unknown";
-			}
+      cpuName = processWmic(line, "Name");
+      if (cpuName == null) cpuName = "unknown";
 		#elseif linux
 			cpuName = stripWord(line,"\n");
 		#elseif mac
@@ -339,24 +324,15 @@ class SystemData
 	private function processGPU(line:String):Void
 	{
 		#if windows
-			gpuName = "unknown";
-			gpuDriverVersion = "unknown";
-			var arr:Array<String> = line.split(",");
-			if (arr != null && arr.length == 2)
-			{
-				for (str in arr)
-				{
-					str = stripEndLines(str);
-					if (str.indexOf("Name=") != -1)
-					{
-						gpuName = stripWord(str, "Name=");
-					}
-					else if (str.indexOf("DriverVersion=") != -1)
-					{
-						gpuDriverVersion = stripWord(str, "DriverVersion=");
-					}
-				}
-			}
+      if (gpuName == null) gpuName = "unknown";
+      if (gpuDriverVersion == null) gpuDriverVersion = "unknown";
+      var result:String = processWmic(line, "Name");
+      if (result != null) gpuName = result;
+      else
+      {
+        result = processWmic(line, "DriverVersion");
+        if (result != null) gpuDriverVersion = result;
+      }
 		#elseif linux
 			gpuName = line;
 			gpuDriverVersion = "unknown";
@@ -366,6 +342,21 @@ class SystemData
 		#end
 	}
 	
+  #if windows
+  private function processWmic(data:String, key:String):String
+  {
+    var idx:Int = data.indexOf(key);
+    if (idx != -1)
+    {
+      if (StringTools.fastCodeAt(data, idx + key.length) == '='.code)
+        return StringTools.trim(data.substr(idx + key.length + 1));
+      else
+        return StringTools.trim(data.substr(idx + key.length));
+    }
+    return null;
+  }
+  #end
+  
 	public static function endl():String
 	{
 		#if windows

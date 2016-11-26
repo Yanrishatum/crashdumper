@@ -2,6 +2,7 @@ package crashdumper.hooks;
 import crashdumper.hooks.openfl.HookOpenFL;
 import haxe.Http;
 import haxe.io.Bytes;
+import haxe.io.BytesInput;
 import haxe.io.Path;
 import haxe.io.StringInput;
 
@@ -209,7 +210,7 @@ class Util
 		#end
 		
 		#if (sys)
-			var stringInput = new StringInput(zipString);
+			var stringInput = new BytesInput(bytes);
 			request.fileTransfer("report", "report.zip", stringInput, stringInput.length, "application/octet-stream");
 			request.request(true);
 		#end

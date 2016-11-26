@@ -2,24 +2,12 @@ package crashdumper.hooks.openfl;
 import crashdumper.hooks.IHookPlatform;
 import haxe.io.Bytes;
 
-#if !lime_legacy
-	import lime.app.Application;
-	import lime.system.System;
-#end
+import lime.app.Application;
+import lime.system.System;
 
-#if openfl
-	import openfl.utils.SystemPath;
-#end
-
-#if (openfl >= "2.0.0")
-	import openfl.Lib;
-	import openfl.utils.ByteArray;
-	import openfl.events.UncaughtErrorEvent;
-#else
-	import nme.Lib;
-	import nme.utils.ByteArray;
-	import flash.events.UncaughtErrorEvent;
-#end
+import openfl.Lib;
+import openfl.utils.ByteArray;
+import openfl.events.UncaughtErrorEvent;
 
 /**
  * ...
@@ -39,21 +27,9 @@ class HookOpenFL implements IHookPlatform
 	
 	public function new() 
 	{
-		#if openfl
-			#if !flash
-				#if lime_legacy
-					fileName = Lib.file;
-					packageName = Lib.packageName;
-					version = Lib.version;
-				#else
-					fileName = Application.current.config.file;
-					packageName = Application.current.config.packageName;
-					version = Application.current.config.version;
-				#end
-			#end
-		#else
-			throw "OpenFL Library was not detected, using HookOpenFL is therefore impossible!";
-		#end
+    fileName = Application.current.config.file;
+    packageName = Application.current.config.packageName;
+    version = Application.current.config.version;
 	}
 	
 	public function getFolderPath(str:String):String
@@ -64,19 +40,8 @@ class HookOpenFL implements IHookPlatform
 				{
 					str = Util.uCombine("/" + str);
 				}
-				str = Util.uCombine([SystemPath.applicationStorageDirectory,str]);
+				str = Util.uCombine([System.applicationStorageDirectory,str]);
 			#else
-				#if lime_legacy
-					switch(str)
-					{
-						case null, "": str = SystemPath.applicationStorageDirectory;
-						case PATH_APPDATA: str = SystemPath.applicationStorageDirectory;
-						case PATH_DOCUMENTS: str = SystemPath.documentsDirectory;
-						case PATH_DESKTOP: str = SystemPath.desktopDirectory;
-						case PATH_USERPROFILE: str = SystemPath.userDirectory;
-						case PATH_APP: str = SystemPath.applicationDirectory;
-					}
-				#else
 					switch(str)
 					{
 						case null, "": str = System.applicationStorageDirectory;
@@ -86,7 +51,6 @@ class HookOpenFL implements IHookPlatform
 						case PATH_USERPROFILE: str = System.userDirectory;
 						case PATH_APP: str = System.applicationDirectory;
 					}
-				#end
 			#end
 			if (str != "")
 			{
@@ -102,18 +66,9 @@ class HookOpenFL implements IHookPlatform
 	
 	public function getZipBytes(str):Bytes
 	{
-		#if !html5
-			#if flash
-				var fbytes:ByteArray = new ByteArray();
-				fbytes.writeUTFBytes(str);
-				var bytes:Bytes = cast fbytes;
-				return bytes;
-			#else
-				var bytes:ByteArray = new ByteArray();
-				bytes.writeUTFBytes(str);
-				return bytes;
-			#end
-		#end
-		return null;
+    var bytes:ByteArray = new ByteArray();
+    bytes.writeUTFBytes(str);
+    return bytes;
 	}
+  
 }
