@@ -95,7 +95,7 @@ class CrashDumper
 		
 		session = new SessionData(sessionId_, data);
 		
-    system = new SystemData();
+//    system = new SystemData();
     
 		endl = SystemData.endl();
 		sl = SystemData.slash();
